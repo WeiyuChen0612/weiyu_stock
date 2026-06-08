@@ -7,6 +7,8 @@
     <script src="data.js"></script>
     <style>
         body { background-color: #0d1117; color: #fff; font-family: sans-serif; padding: 20px; }
+        /* 新增：更新時間樣式 */
+        #update-time { color: #888; font-size: 0.9rem; margin-bottom: 20px; }
         .search-container { position: relative; width: 100%; max-width: 500px; margin-bottom: 20px; }
         #search-box { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #161b22; color: white; }
         #suggestions { position: absolute; width: 100%; background: #222; border: 1px solid #444; z-index: 1000; display: none; max-height: 200px; overflow-y: auto; border-radius: 0 0 8px 8px; }
@@ -18,6 +20,7 @@
 </head>
 <body>
     <h1>📊 台股板塊分析</h1>
+    <div id="update-time">資料更新中...</div>
     <h2>虧錢別找我算帳~</h2>
     <div class="search-container">
         <input type="text" id="search-box" placeholder="🔍 輸入代號或名稱..." oninput="showSuggestions()">
@@ -35,92 +38,97 @@
     </div>
 
     <script>
+        // 自動顯示更新時間
+        fetch('data.js', { method: 'HEAD' })
+            .then(response => {
+                const date = new Date(response.headers.get('Last-Modified'));
+                document.getElementById('update-time').innerText = "🕒 最後更新時間: " + date.toLocaleString();
+            })
+            .catch(() => { document.getElementById('update-time').innerText = "🕒 資料來源更新中..."; });
+
         var chartDom = document.getElementById('main-chart');
         var myChart = echarts.init(chartDom, 'dark');
 
         function renderChart(data) {
           myChart.setOption({
-          // 將 X 軸設為資金動能，Y 軸設為平均漲跌幅
-          xAxis: { name: '資金動能 (成交熱度)' }, 
-          yAxis: { name: '板塊漲跌幅 (%)' },
-          series: [{
-            type: 'scatter',
-            data: data.map(item => {
-                // 計算板塊平均漲跌幅
-                let avgChange = item.details.reduce((a, b) => a + b.change, 0) / item.details.length;
-                return { 
-                    value: [item.x, avgChange], // Y 軸改用 avgChange
-                    name: item.name, 
-                    raw: item,
-                    // 氣泡顏色：漲紅跌綠
-                    itemStyle: { color: avgChange >= 0 ? '#ff4d4f' : '#52c41a' } 
-                };
-            }),
-            symbolSize: 80, // 稍微加大氣泡比較清楚
-            label: { 
-                show: true, 
-                // 顯示「板塊名 \n 漲跌幅%」
-                formatter: function(params) {
-                    let change = params.data.value[1].toFixed(2);
-                    return params.name + '\n' + change + '%';
-                },
-                position: 'inside', // 文字顯示在氣泡內
-                color: '#fff',
-                fontSize: 12
-            }
-        }]
-    }, true);
-}
+            xAxis: { name: '資金動能 (成交熱度)' }, 
+            yAxis: { name: '板塊漲跌幅 (%)' },
+            series: [{
+                type: 'scatter',
+                data: data.map(item => {
+                    let avgChange = item.details.reduce((a, b) => a + b.change, 0) / item.details.length;
+                    return { 
+                        value: [item.x, avgChange], 
+                        name: item.name, 
+                        raw: item,
+                        itemStyle: { color: avgChange >= 0 ? '#ff4d4f' : '#52c41a' } 
+                    };
+                }),
+                symbolSize: 80,
+                label: { 
+                    show: true, 
+                    formatter: function(params) {
+                        let change = params.data.value[1].toFixed(2);
+                        return params.name + '\n' + change + '%';
+                    },
+                    position: 'inside',
+                    color: '#fff',
+                    fontSize: 12
+                }
+            }]
+        }, true);
+    }
 
-        function showDetails(sector) {
-            document.getElementById('panel-title').innerText = "板塊: " + sector.name;
-            var list = document.getElementById('stock-list');
-            list.innerHTML = "";
+    // ... (其餘 showDetails 與 showSuggestions 函式保持不變)
+    function showDetails(sector) {
+        document.getElementById('panel-title').innerText = "板塊: " + sector.name;
+        var list = document.getElementById('stock-list');
+        list.innerHTML = "";
+        sector.details.forEach(s => {
+            list.innerHTML += `<tr>
+                <td>${s.display_name} (${s.name})</td>
+                <td>${s.buy_vol.toLocaleString()}</td>
+                <td>${s.sell_vol.toLocaleString()}</td>
+                <td>${s.price}</td>
+                <td style="color: ${s.change >= 0 ? '#ff4d4f' : '#52c41a'}">${s.change}%</td>
+                <td>${s.warning} ${s.buy_power.toLocaleString()}</td>
+            </tr>`;
+        });
+        document.getElementById('details-panel').style.display = 'block';
+    }
+
+    function showSuggestions() {
+        var query = document.getElementById('search-box').value.toLowerCase();
+        var sugDiv = document.getElementById('suggestions');
+        sugDiv.innerHTML = "";
+        if (!query) { sugDiv.style.display = "none"; renderChart(stockData); return; }
+
+        var matches = [];
+        stockData.forEach(sector => {
             sector.details.forEach(s => {
-                list.innerHTML += `<tr>
-                    <td>${s.display_name} (${s.name})</td>
-                    <td>${s.buy_vol.toLocaleString()}</td>
-                    <td>${s.sell_vol.toLocaleString()}</td>
-                    <td>${s.price}</td>
-                    <td style="color: ${s.change >= 0 ? '#ff4d4f' : '#52c41a'}">${s.change}%</td>
-                    <td>${s.warning} ${s.buy_power.toLocaleString()}</td>
-                </tr>`;
+                if (s.name.toLowerCase().includes(query) || s.display_name.toLowerCase().includes(query)) {
+                    matches.push({ ...s, sectorObj: sector });
+                }
             });
-            document.getElementById('details-panel').style.display = 'block';
-        }
+        });
 
-        function showSuggestions() {
-            var query = document.getElementById('search-box').value.toLowerCase();
-            var sugDiv = document.getElementById('suggestions');
-            sugDiv.innerHTML = "";
-            if (!query) { sugDiv.style.display = "none"; renderChart(stockData); return; }
+        matches.forEach(m => {
+            var div = document.createElement("div");
+            div.className = "suggestion-item";
+            div.innerHTML = `<strong>${m.name} ${m.display_name}</strong>`;
+            div.onclick = () => {
+                document.getElementById('search-box').value = m.display_name;
+                sugDiv.style.display = "none";
+                renderChart([m.sectorObj]);
+                showDetails(m.sectorObj);
+            };
+            sugDiv.appendChild(div);
+        });
+        sugDiv.style.display = matches.length > 0 ? "block" : "none";
+    }
 
-            var matches = [];
-            stockData.forEach(sector => {
-                sector.details.forEach(s => {
-                    if (s.name.toLowerCase().includes(query) || s.display_name.toLowerCase().includes(query)) {
-                        matches.push({ ...s, sectorObj: sector });
-                    }
-                });
-            });
-
-            matches.forEach(m => {
-                var div = document.createElement("div");
-                div.className = "suggestion-item";
-                div.innerHTML = `<strong>${m.name} ${m.display_name}</strong>`;
-                div.onclick = () => {
-                    document.getElementById('search-box').value = m.display_name;
-                    sugDiv.style.display = "none";
-                    renderChart([m.sectorObj]);
-                    showDetails(m.sectorObj);
-                };
-                sugDiv.appendChild(div);
-            });
-            sugDiv.style.display = matches.length > 0 ? "block" : "none";
-        }
-
-        renderChart(stockData);
-        myChart.on('click', p => showDetails(p.data.raw));
+    renderChart(stockData);
+    myChart.on('click', p => showDetails(p.data.raw));
     </script>
 </body>
 </html>
