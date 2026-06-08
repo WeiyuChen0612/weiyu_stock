@@ -2,28 +2,34 @@ name: Update Stock Data
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '*/15 * * * *'  # 設定為每 15 分鐘執行一次
+  workflow_dispatch:        # 讓你隨時可以手動點擊執行
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write       # 必須開啟寫入權限才能更新檔案
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install dependencies
         run: pip install yfinance pandas
+
       - name: Run weiyu_stock
         run: python weiyu_stock.py
+
       - name: Commit and push changes
         run: |
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@github.com'
+          # 如果沒有數據變動，此指令會自動跳過而不報錯
           git add data.js || true
-          git commit -m "Update stock data" || echo "No changes to commit"
+          git commit -m "Automated update: $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push
