@@ -2,7 +2,7 @@ name: Update Stock Data
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # 設定為每 30 分鐘執行一次
+    - cron: '*/15 * * * *'  # 設定為每 15 分鐘執行一次
   workflow_dispatch:        # 讓你隨時可以手動點擊執行
 
 jobs:
