@@ -49,8 +49,17 @@
     <script>
         var currentSector = null;
 
-        // 共用的下載邏輯
-        function downloadExcel(data, fileName) {
+        // 共用的下載邏輯，自動加入 (名稱)_YYYYMMDDHHMM 格式
+        function downloadExcel(data, baseName) {
+            const now = new Date();
+            const d = now.getFullYear().toString() + 
+                      (now.getMonth() + 1).toString().padStart(2, '0') + 
+                      now.getDate().toString().padStart(2, '0') + 
+                      now.getHours().toString().padStart(2, '0') + 
+                      now.getMinutes().toString().padStart(2, '0');
+            
+            const fileName = `(${baseName})_${d}.xlsx`;
+            
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "StockData");
@@ -65,7 +74,7 @@
                 "買單成交": s.buy_vol, "賣單成交": s.sell_vol, "收盤價": s.price,
                 "漲跌幅 (%)": s.change, "法人預估買超": s.buy_power, "資金動能": (s.buy_vol + s.sell_vol)
             }));
-            downloadExcel(data, `${currentSector.name}_數據.xlsx`);
+            downloadExcel(data, currentSector.name);
         }
 
         // 下載全部板塊資訊
@@ -80,7 +89,7 @@
                     });
                 });
             });
-            downloadExcel(allData, "全市場板塊總表.xlsx");
+            downloadExcel(allData, "全市場板塊總表");
         }
 
         // 1. 自動顯示更新時間
