@@ -1,0 +1,28 @@
+name: Update Stock Data
+
+on:
+  schedule:
+    # 台灣時間 09:00 - 15:00 之間，每 15 分鐘執行一次
+    # cron 語法為 UTC 時間，台灣時間減 8 小時
+    - cron: '0,15,30,45 1-7 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with: {python-version: '3.9'}
+      - name: Install dependencies
+        run: pip install yfinance requests pandas
+      - name: Run script
+        run: python weiyu_stock.py
+      - name: Commit and push
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add data.js
+          git commit -m "自動更新數據" || exit 0
+          git push
