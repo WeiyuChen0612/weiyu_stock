@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    # UTC 時間 01:00-07:00 等於台灣時間 09:00-15:00
+    # 這是標準的 GitHub Actions cron 格式，這樣寫最穩
     - cron: '0,15,30,45 1-7 * * 1-5'
 
 jobs:
@@ -31,14 +31,6 @@ jobs:
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          
-          # 檢查 data.js 是否有改變
           git add data.js
-          
-          # 如果 git diff 檢查發現沒有變動，直接跳過 commit 並結束
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "沒有資料變動，跳過更新。"
-          else
-            git commit -m "自動更新: $(date +'%Y-%m-%d %H:%M')"
-            git push
-          fi
+          # 關鍵：這裡加入判斷，有資料變化才 commit
+          git diff --quiet && git diff --staged --quiet || (git commit -m "自動更新數據" && git push)
