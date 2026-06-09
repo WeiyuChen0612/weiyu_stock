@@ -3,6 +3,8 @@ import json
 import time
 import pandas as pd
 from datetime import datetime
+import yfinance as yf
+
 
 NAME_MAP = {
     "2330.TW": "台積電", "2317.TW": "鴻海", "2382.TW": "廣達", "3231.TW": "緯創", "2376.TW": "技嘉", "6669.TW": "緯穎", "2303.TW": "聯電", "3711.TW": "日月光投控", "2449.TW": "京元電子",
@@ -32,28 +34,49 @@ SECTOR_DATA = {
 }
 
 def get_real_institutional_data():
-    """抓取證交所官方盤後法人買賣超 (T86)"""
+    """抓取證交所官方盤後法人買賣超，並自動偵測欄位"""
     date_str = datetime.now().strftime("%Y%m%d")
     url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALL&response=json"
     try:
         res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}).json()
-        if 'data' not in res: return {}
+        if 'data' not in res or not res['data']:
+            print("⚠️ 證交所目前尚無今日法人資料。")
+            return {}
         
         df = pd.DataFrame(res['data'], columns=res['fields'])
-        # 處理數字格式
-        df['外陸資買賣超股數'] = df['外陸資買賣超股數'].str.replace(',', '').astype(int)
-        df['投信買賣超股數'] = df['投信買賣超股數'].str.replace(',', '').astype(int)
+        
+        # 自動查找包含關鍵字的欄位名稱
+        def find_col(keywords):
+            for col in df.columns:
+                if all(kw in col for kw in keywords): return col
+            return None
+
+        # 證交所欄位常見名稱：'外資及陸資買賣超股數', '投信買賣超股數'
+        col_foreign = find_col(['外資', '陸資'])
+        col_sitc = find_col(['投信'])
+        
+        if not col_foreign or not col_sitc:
+            print(f"❌ 找不到欄位，目前清單: {list(df.columns)}")
+            return {}
+
+        df[col_foreign] = df[col_foreign].astype(str).str.replace(',', '').astype(int)
+        df[col_sitc] = df[col_sitc].astype(str).str.replace(',', '').astype(int)
         
         fund_map = {}
         for _, row in df.iterrows():
             code = f"{row['證券代號']}.TW"
-            fund_map[code] = row['外陸資買賣超股數'] + row['投信買賣超股數']
+            fund_map[code] = row[col_foreign] + row[col_sitc]
         return fund_map
-    except: return {}
+    except Exception as e:
+        print(f"❌ 抓取證交所失敗: {e}")
+        return {}
 
 def get_data():
     now = datetime.now()
-    is_after_hours = now.hour >= 14 and now.minute >= 30
+    # 修正時間判斷：下午 2:30 (870分鐘) 後觸發
+    current_minutes = now.hour * 60 + now.minute
+    is_after_hours = current_minutes >= 870
+    
     fund_data = get_real_institutional_data() if is_after_hours else {}
     
     final_output = []
@@ -65,7 +88,6 @@ def get_data():
         
         for ticker in stock_list:
             try:
-                import yfinance as yf
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="2d")
                 if not hist.empty:
@@ -73,9 +95,8 @@ def get_data():
                     prev_price = hist['Close'].iloc[-2]
                     vol = int(hist['Volume'].iloc[-1])
                     change_pct = round(((current_price - prev_price) / prev_price) * 100, 2)
-                    
                     total_vol += vol
-                    # 若為盤後則抓取真實法人買超，盤中顯示 0
+                    
                     buy_power = fund_data.get(ticker, 0)
                     
                     stock_details.append({
@@ -90,7 +111,7 @@ def get_data():
                     })
             except Exception as e:
                 print(f"  ! {ticker} 抓取失敗: {e}")
-            time.sleep(0.6) # 避免 Yahoo 擋請求
+            time.sleep(0.6)
             
         final_output.append({"name": sector_name, "x": round(total_vol/100000, 2), "details": stock_details})
 
